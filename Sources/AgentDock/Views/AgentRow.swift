@@ -4,9 +4,9 @@ struct AgentRow: View {
     @ObservedObject var store: AgentStore
     @ObservedObject var panel: PanelState
     let session: AgentSession
-    let breath: Bool
 
     @State private var rowHovered = false
+    @State private var beamVisible = false
 
     private var needsAttention: Bool { store.effectivelyNeedsAttention(session) }
     private var isWorking: Bool { session.state == .working }
@@ -17,11 +17,14 @@ struct AgentRow: View {
     var body: some View {
         HStack(alignment: .center, spacing: 10) {
             ZStack {
-                if isWorking {
-                    RoundedRectangle(cornerRadius: 6, style: .continuous)
-                        .stroke(Color.green.opacity(breath ? 0.85 : 0.3), lineWidth: 1)
-                        .shadow(color: Color.green.opacity(breath ? 0.45 : 0.0), radius: 4)
-                        .frame(width: 24, height: 24)
+                if beamVisible {
+                    Group {
+                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            .stroke(Color.green.opacity(0.22), lineWidth: 1)
+                        BorderBeam()
+                    }
+                    .frame(width: 24, height: 24)
+                    .transition(.opacity)
                 }
                 toolIcon
                 if needsAttention {
@@ -71,42 +74,54 @@ struct AgentRow: View {
         }
         .panelHoverCursor(panel.hoverPoint, $rowHovered)
         .help(revealHelp)
+        .onAppear {
+            beamVisible = isWorking
+        }
+        .onChange(of: isWorking) { working in
+            withAnimation(working ? .easeIn(duration: 0.25) : .easeOut(duration: 0.9)) {
+                beamVisible = working
+            }
+        }
     }
 
     private var toolIcon: some View {
         ZStack {
             RoundedRectangle(cornerRadius: 5, style: .continuous)
                 .fill(Color.white.opacity(0.08))
-            Text(toolGlyph)
-                .font(.system(size: 11, weight: .bold, design: .rounded))
-                .foregroundStyle(.white.opacity(0.9))
+            ToolIcon(tool: session.tool)
+                .padding(4)
         }
     }
 
-    private var toolGlyph: String {
-        switch session.tool {
-        case "claude-code": return "CC"
-        case "cursor": return "Cu"
-        case "codex": return "Cx"
-        default: return String(session.tool.prefix(2)).uppercased()
-        }
+    private var chipTint: Color {
+        session.state.needsAttention && !needsAttention ? .secondary : session.state.tint
     }
 
     private var stateChip: some View {
         Text(session.state.label)
             .font(.system(size: 9, weight: .semibold))
-            .foregroundStyle(session.state.tint)
+            .foregroundStyle(chipTint)
             .padding(.horizontal, 5)
             .padding(.vertical, 1)
             .background(
-                Capsule().fill(session.state.tint.opacity(0.16))
+                Capsule().fill(chipTint.opacity(0.16))
             )
     }
 
     @ViewBuilder
     private var actions: some View {
         HStack(spacing: 4) {
-            if needsAttention {
+            if let request = store.pendingRequest(for: session) {
+                IconButton(symbol: "checkmark", help: "Allow \(request.toolName)", tint: .green, hoverPoint: panel.hoverPoint) {
+                    store.respond(to: request, decision: .allow)
+                }
+                IconButton(symbol: "xmark", help: "Deny \(request.toolName)", tint: .red, hoverPoint: panel.hoverPoint) {
+                    store.respond(to: request, decision: .deny)
+                }
+                IconButton(symbol: "terminal", help: "Decide in terminal", hoverPoint: panel.hoverPoint) {
+                    store.respond(to: request, decision: .ask)
+                }
+            } else if needsAttention {
                 IconButton(symbol: "xmark", help: "Dismiss attention flag", hoverPoint: panel.hoverPoint) {
                     store.dismissAttention(for: session)
                 }
@@ -115,9 +130,59 @@ struct AgentRow: View {
     }
 }
 
+private struct BorderBeam: View {
+    private static let segments = 8
+    private static let tailLength: CGFloat = 0.3
+    private static let cycleDuration: Double = 2.2
+
+    var body: some View {
+        TimelineView(.animation) { context in
+            let phase = CGFloat(
+                (context.date.timeIntervalSinceReferenceDate / Self.cycleDuration)
+                    .truncatingRemainder(dividingBy: 1)
+            )
+            ZStack {
+                ForEach(0..<Self.segments, id: \.self) { index in
+                    let brightness = CGFloat(index + 1) / CGFloat(Self.segments)
+                    BeamSegment(
+                        phase: phase,
+                        offset: CGFloat(index) / CGFloat(Self.segments) * Self.tailLength,
+                        length: Self.tailLength / CGFloat(Self.segments)
+                    )
+                    .stroke(
+                        Color.green.opacity(0.9 * pow(brightness, 1.5)),
+                        style: StrokeStyle(lineWidth: 0.8 + 0.7 * brightness, lineCap: .butt)
+                    )
+                }
+            }
+            .compositingGroup()
+            .shadow(color: Color.green.opacity(0.55), radius: 3)
+        }
+    }
+}
+
+private struct BeamSegment: Shape {
+    let phase: CGFloat
+    let offset: CGFloat
+    let length: CGFloat
+
+    func path(in rect: CGRect) -> Path {
+        let base = Path(roundedRect: rect, cornerRadius: 6, style: .continuous)
+        let start = (phase + offset).truncatingRemainder(dividingBy: 1)
+        let end = start + length
+        if end <= 1 {
+            return base.trimmedPath(from: start, to: end)
+        }
+        var wrapped = base.trimmedPath(from: start, to: 1)
+        wrapped.addPath(base.trimmedPath(from: 0, to: end - 1))
+        return wrapped
+    }
+}
+
 private struct IconButton: View {
     let symbol: String
     let help: String
+    var tint: Color = .white
     let hoverPoint: CGPoint?
     let action: () -> Void
 
@@ -127,11 +192,11 @@ private struct IconButton: View {
         Button(action: action) {
             Image(systemName: symbol)
                 .font(.system(size: 10, weight: .semibold))
-                .foregroundStyle(.white.opacity(hovered ? 1 : 0.7))
+                .foregroundStyle(tint == .white ? Color.white.opacity(hovered ? 1 : 0.7) : tint.opacity(hovered ? 1 : 0.85))
                 .frame(width: 22, height: 22)
                 .background(
                     RoundedRectangle(cornerRadius: 5, style: .continuous)
-                        .fill(Color.white.opacity(hovered ? 0.14 : 0.06))
+                        .fill(tint == .white ? Color.white.opacity(hovered ? 0.14 : 0.06) : tint.opacity(hovered ? 0.22 : 0.12))
                 )
         }
         .buttonStyle(.plain)

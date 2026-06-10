@@ -2,26 +2,31 @@ import SwiftUI
 
 enum PanelMetrics {
     static let rowHeight: CGFloat = 46
-    static let dividerHeight: CGFloat = 1
     static let rowSpacing: CGFloat = 2
     static let topPadding: CGFloat = 28
     static let bottomPadding: CGFloat = 4
     static let emptyHeight: CGFloat = 96
-    static let settingsHeight: CGFloat = 192
+    static let settingsHeight: CGFloat = 217
+    static let statsHeight: CGFloat = 260
 
     static func contentHeight(forSessions count: Int) -> CGFloat {
         guard count > 0 else { return emptyHeight }
-        let childCount = count * 2
-        let blocks = CGFloat(count) * (rowHeight + dividerHeight)
-        let spacing = CGFloat(childCount - 1) * rowSpacing
-        return topPadding + blocks + spacing + bottomPadding
+        let rows = CGFloat(count) * rowHeight
+        let spacing = CGFloat(count - 1) * rowSpacing
+        return topPadding + rows + spacing + bottomPadding
     }
+}
+
+enum PanelMode {
+    case sessions
+    case settings
+    case stats
 }
 
 @MainActor
 final class PanelState: ObservableObject {
     @Published var expanded: Bool = false
-    @Published var settingsOpen: Bool = false
+    @Published var mode: PanelMode = .sessions
     @Published var hoverPoint: CGPoint?
     @Published var contentHeight: CGFloat = PanelMetrics.emptyHeight
 
@@ -44,7 +49,12 @@ final class PanelState: ObservableObject {
     }
 
     var expandedBodyHeight: CGFloat {
-        let base = settingsOpen ? PanelMetrics.settingsHeight : contentHeight
+        let base: CGFloat
+        switch mode {
+        case .sessions: base = contentHeight
+        case .settings: base = PanelMetrics.settingsHeight
+        case .stats: base = PanelMetrics.statsHeight
+        }
         return min(max(base, minExpandedBodyHeight), maxExpandedBodyHeight)
     }
 

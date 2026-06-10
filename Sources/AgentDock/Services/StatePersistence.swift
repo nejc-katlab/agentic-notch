@@ -5,6 +5,7 @@ struct AppState: Codable {
     var launchAtLogin: Bool = false
     var autoExpandOnAttention: Bool = true
     var sleepPrevention: SleepPreventionMode = .never
+    var permissionInterception: Bool = false
 }
 
 final class StatePersistence {

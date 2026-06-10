@@ -3,13 +3,15 @@ import SwiftUI
 struct ExpandedPanel: View {
     @ObservedObject var store: AgentStore
     @ObservedObject var panel: PanelState
-    let breath: Bool
 
     var body: some View {
         ZStack(alignment: .topTrailing) {
             Group {
-                if panel.settingsOpen {
+                if panel.mode == .settings {
                     SettingsPanel(store: store, panel: panel)
+                        .padding(.top, 4)
+                } else if panel.mode == .stats {
+                    StatsPanel(panel: panel)
                         .padding(.top, 4)
                 } else if store.sessions.isEmpty {
                     emptyState
@@ -17,7 +19,7 @@ struct ExpandedPanel: View {
                     ScrollView {
                         VStack(spacing: PanelMetrics.rowSpacing) {
                             ForEach(store.sessions) { session in
-                                AgentRow(store: store, panel: panel, session: session, breath: breath)
+                                AgentRow(store: store, panel: panel, session: session)
                                     .frame(height: PanelMetrics.rowHeight)
                                     .background(
                                         RoundedRectangle(cornerRadius: 6, style: .continuous)
@@ -25,9 +27,6 @@ struct ExpandedPanel: View {
                                                 ? Color.orange.opacity(0.08)
                                                 : Color.white.opacity(0.0))
                                     )
-                                Rectangle()
-                                    .fill(Color.white.opacity(0.04))
-                                    .frame(height: PanelMetrics.dividerHeight)
                             }
                         }
                         .padding(.top, PanelMetrics.topPadding)
@@ -37,7 +36,7 @@ struct ExpandedPanel: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
 
-            SettingsButton(panel: panel)
+            PanelModeButtons(panel: panel)
                 .padding(.top, 4)
                 .padding(.trailing, 2)
         }

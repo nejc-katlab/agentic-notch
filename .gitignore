@@ -1,5 +1,7 @@
 .build/
 .claude/
+dist/
+__pycache__/
 .DS_Store
 *.swiftpm
 xcuserdata/

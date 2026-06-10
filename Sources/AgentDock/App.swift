@@ -64,9 +64,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         store = AgentStore()
         store.start()
 
-        let claude = ClaudeCodeSource()
-        store.register(claude)
-        sources.append(claude)
+        sources = [
+            FileWatchingSource(tag: "claude-code", directory: AgentDockPaths.sourceDir("sessions")),
+            FileWatchingSource(tag: "codex", directory: AgentDockPaths.sourceDir("codex")),
+            FileWatchingSource(tag: "gemini", directory: AgentDockPaths.sourceDir("gemini")),
+            FileWatchingSource(tag: "opencode", directory: AgentDockPaths.sourceDir("opencode"))
+        ]
+        sources.forEach { store.register($0) }
 
         windowController = NotchWindowController(store: store)
         windowController.showOnScreen()

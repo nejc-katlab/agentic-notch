@@ -39,6 +39,18 @@ struct SettingsPanel: View {
             RowDivider()
 
             SettingRow(
+                symbol: "checkmark.shield.fill",
+                tint: Color(red: 0.24, green: 0.84, blue: 0.47),
+                title: "Approve in notch",
+                isOn: store.permissionInterception,
+                hoverPoint: panel.hoverPoint
+            ) {
+                store.setPermissionInterception(!store.permissionInterception)
+            }
+
+            RowDivider()
+
+            SettingRow(
                 symbol: "bolt.fill",
                 tint: Color(red: 0.0, green: 0.62, blue: 1.0),
                 title: "Launch at login",

@@ -72,7 +72,7 @@ final class NotchWindowController: NSWindowController {
             }
             .store(in: &sinks)
 
-        panel.$settingsOpen
+        panel.$mode
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in
                 guard let self else { return }
@@ -198,7 +198,7 @@ final class NotchWindowController: NSWindowController {
     }
 
     private func userClickedOutside() {
-        if panel.settingsOpen { panel.settingsOpen = false }
+        if panel.mode != .sessions { panel.mode = .sessions }
         if panel.expanded {
             attentionSuppressed = true
             recomputeExpansion()
@@ -210,7 +210,7 @@ final class NotchWindowController: NSWindowController {
             && store.anyNeedsAttention
             && !attentionSuppressed
             && !userIsOnAttentionTerminal()
-        let shouldExpand = hovered || panel.settingsOpen || attentionDrivenExpand
+        let shouldExpand = hovered || panel.mode != .sessions || attentionDrivenExpand
         if panel.expanded != shouldExpand {
             panel.expanded = shouldExpand
             updateHitShape()

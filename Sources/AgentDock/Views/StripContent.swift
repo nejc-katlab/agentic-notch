@@ -5,7 +5,6 @@ struct StripContent: View {
     let topInset: CGFloat
     let bodyWidth: CGFloat
     let notchWidth: CGFloat
-    let breath: Bool
 
     private var sideWidth: CGFloat {
         max(0, (bodyWidth - notchWidth) / 2)
@@ -15,7 +14,7 @@ struct StripContent: View {
         HStack(spacing: 0) {
             HStack(spacing: 8) {
                 Spacer(minLength: 0)
-                WorkingChip(count: store.runningCount, breath: breath)
+                WorkingChip(count: store.runningCount)
             }
             .padding(.trailing, 0)
             .frame(width: sideWidth, height: topInset, alignment: .trailing)
@@ -37,7 +36,6 @@ struct StripContent: View {
 
 private struct WorkingChip: View {
     let count: Int
-    let breath: Bool
 
     private let period: Double = 3.2
 
@@ -57,6 +55,7 @@ private struct WorkingChip: View {
                             .scaleEffect(1 + eased * 4.5)
                             .opacity(max(0, 1 - eased * 2.2) * 0.6)
                     }
+                    .transition(.opacity)
                 }
                 Circle()
                     .fill(Color.green)
@@ -65,6 +64,7 @@ private struct WorkingChip: View {
                     .shadow(color: active ? Color.green.opacity(0.6) : .clear, radius: 3)
             }
             .frame(width: 6, height: 6)
+            .animation(.easeOut(duration: 0.9), value: active)
             chipCount(count, active: active)
         }
     }

@@ -4,15 +4,19 @@ import SwiftUI
 @MainActor
 final class AgentStore: ObservableObject {
     @Published private(set) var sessions: [AgentSession] = []
+    @Published private(set) var pendingPermissions: [String: PermissionRequest] = [:]
     @Published var autoExpandOnAttention: Bool = true
     @Published var sleepPreventionMode: SleepPreventionMode = .never
+    @Published var permissionInterception: Bool = false
 
     private var sources: [AgentSource] = []
     private var sessionsBySource: [String: [AgentSession]] = [:]
     private var dismissedAttention: Set<String> = []
     private let sleepManager = SleepManager()
+    private let permissionResponder = PermissionResponder()
+    private let historyRecorder = HistoryRecorder()
 
-    var runningCount: Int { sessions.filter { $0.state.isRunning && !$0.state.needsAttention }.count }
+    var runningCount: Int { sessions.filter { $0.state.isRunning }.count }
     var attentionCount: Int { sessions.filter { effectivelyNeedsAttention($0) }.count }
     var idleCount: Int { sessions.filter { $0.state == .idle }.count }
     var anyNeedsAttention: Bool { attentionCount > 0 }
@@ -30,6 +34,15 @@ final class AgentStore: ObservableObject {
         dismissedAttention = state.dismissed
         autoExpandOnAttention = state.autoExpandOnAttention
         sleepPreventionMode = state.sleepPrevention
+        permissionInterception = state.permissionInterception
+        permissionResponder.setEnabled(permissionInterception)
+        permissionResponder.onChange = { [weak self] pending in
+            Task { @MainActor in
+                guard let self, self.pendingPermissions != pending else { return }
+                self.pendingPermissions = pending
+            }
+        }
+        permissionResponder.start()
         updateSleepAssertion()
     }
 
@@ -42,6 +55,21 @@ final class AgentStore: ObservableObject {
         sleepPreventionMode = value
         StatePersistence.shared.update { $0.sleepPrevention = value }
         updateSleepAssertion()
+    }
+
+    func setPermissionInterception(_ value: Bool) {
+        permissionInterception = value
+        StatePersistence.shared.update { $0.permissionInterception = value }
+        permissionResponder.setEnabled(value)
+    }
+
+    func pendingRequest(for session: AgentSession) -> PermissionRequest? {
+        pendingPermissions[session.id]
+    }
+
+    func respond(to request: PermissionRequest, decision: PermissionDecision) {
+        permissionResponder.respond(to: request, decision: decision)
+        pendingPermissions.removeValue(forKey: request.sessionKey)
     }
 
     func dismissAttention(for session: AgentSession) {
@@ -75,6 +103,7 @@ final class AgentStore: ObservableObject {
         if sorted != sessions {
             sessions = sorted
         }
+        historyRecorder.observe(sorted)
         updateSleepAssertion()
     }
 

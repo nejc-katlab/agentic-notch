@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""AgentDock hook for Claude Code.
+"""AgentDock hook for Codex CLI.
 
 Reads a hook event JSON from stdin and writes/updates
-~/.agentdock/sessions/{session_id}.json with the current state.
-Wire from ~/.claude/settings.json — see hooks/install.sh.
+~/.agentdock/codex/{session_id}.json with the current state.
+Wire from ~/.codex/hooks.json — see hooks/install-codex.sh.
 """
 import os
 import re
@@ -14,7 +14,7 @@ import uuid
 import subprocess
 from pathlib import Path
 
-ROOT = Path.home() / ".agentdock" / "sessions"
+ROOT = Path.home() / ".agentdock" / "codex"
 ROOT.mkdir(parents=True, exist_ok=True)
 
 PERM_ROOT = Path.home() / ".agentdock" / "permissions"
@@ -36,58 +36,6 @@ def derive_project(cwd: str | None) -> str | None:
     return Path(root).name
 
 
-def derive_tty() -> str | None:
-    """Walk up the parent chain looking for the controlling TTY of the Claude
-    Code process. The hook's own PPID is Claude Code, but we walk further in
-    case there's a wrapper. Returns the device path like '/dev/ttys001'."""
-    try:
-        pid = os.getppid()
-        for _ in range(8):
-            if pid <= 1:
-                break
-            out = subprocess.run(
-                ["ps", "-o", "tty=,ppid=", "-p", str(pid)],
-                capture_output=True, text=True, timeout=1,
-            ).stdout.strip()
-            if not out:
-                break
-            parts = out.split()
-            tty = parts[0] if parts else "?"
-            ppid = int(parts[1]) if len(parts) > 1 else 1
-            if tty and tty != "?" and tty != "??":
-                return f"/dev/{tty}" if not tty.startswith("/dev/") else tty
-            pid = ppid
-    except Exception:
-        return None
-    return None
-
-
-def map_event(event: str, payload: dict) -> tuple[str, str | None, bool]:
-    """Return (state, activity, needs_attention)."""
-    tool = payload.get("tool_name")
-    tool_input = payload.get("tool_input") or {}
-    if event == "SessionStart":
-        return "working", "Session started", False
-    if event == "UserPromptSubmit":
-        return "working", "Thinking…", False
-    if event == "PreToolUse":
-        return "working", _describe_tool(tool, tool_input, prefix="Running"), False
-    if event == "PostToolUse":
-        return "working", _describe_tool(tool, tool_input, prefix="Finished"), False
-    if event == "Notification":
-        msg = (payload.get("message") or "").lower()
-        if "permission" in msg or "approve" in msg:
-            return "needs-permission", payload.get("message"), True
-        if "waiting" in msg or "idle" in msg or not msg:
-            return "idle", payload.get("message") or "Waiting for your input", False
-        return "needs-input", payload.get("message"), True
-    if event == "Stop":
-        return "idle", "Turn ended", False
-    if event == "SessionEnd":
-        return "done", "Session ended", False
-    return "working", event, False
-
-
 def app_running() -> bool:
     try:
         return subprocess.run(
@@ -103,10 +51,41 @@ def write_session(record: dict, target: Path) -> None:
     tmp.replace(target)
 
 
-def intercept_permission(payload: dict, record: dict, target: Path) -> str | None:
+def _describe_tool(tool: str | None, tool_input: dict, *, prefix: str) -> str:
+    if not tool:
+        return prefix
+    if tool in ("Bash", "shell", "local_shell"):
+        cmd = tool_input.get("command")
+        if isinstance(cmd, list):
+            cmd = " ".join(str(c) for c in cmd)
+        lines = str(cmd or "").strip().splitlines()
+        cmd = re.sub(r"\s+", " ", lines[0] if lines else "")[:60]
+        return f"{prefix} `{cmd}`" if cmd else f"{prefix} shell"
+    if tool == "apply_patch":
+        return f"{prefix} edit"
+    return f"{prefix} {tool}"
+
+
+def map_event(event: str, payload: dict) -> tuple[str, str | None, bool] | None:
+    tool = payload.get("tool_name")
+    tool_input = payload.get("tool_input") or {}
+    if event == "SessionStart":
+        return "working", "Session started", False
+    if event == "UserPromptSubmit":
+        return "working", "Thinking…", False
+    if event == "PreToolUse":
+        return "working", _describe_tool(tool, tool_input, prefix="Running"), False
+    if event == "PostToolUse":
+        return "working", _describe_tool(tool, tool_input, prefix="Finished"), False
+    if event == "PermissionRequest":
+        return "needs-permission", _describe_tool(tool, tool_input, prefix="Wants to run"), True
+    if event == "Stop":
+        return "idle", "Turn ended", False
+    return None
+
+
+def intercept_permission(payload: dict, record: dict) -> str | None:
     if not (PERM_ROOT / "enabled").exists():
-        return None
-    if payload.get("permission_mode") not in ("default", "plan"):
         return None
     if not app_running():
         return None
@@ -120,7 +99,6 @@ def intercept_permission(payload: dict, record: dict, target: Path) -> str | Non
     tool_input = payload.get("tool_input") or {}
     request_id = uuid.uuid4().hex
     now = time.time()
-    summary = _describe_tool(tool, tool_input, prefix="Wants to run")
 
     request = {
         "v": 1,
@@ -128,7 +106,7 @@ def intercept_permission(payload: dict, record: dict, target: Path) -> str | Non
         "sessionId": record["sessionId"],
         "requestId": request_id,
         "toolName": tool,
-        "summary": summary,
+        "summary": record.get("activity"),
         "toolInputPreview": json.dumps(tool_input)[:500],
         "cwd": record.get("cwd"),
         "project": record.get("project"),
@@ -140,14 +118,6 @@ def intercept_permission(payload: dict, record: dict, target: Path) -> str | Non
     req_tmp.write_text(json.dumps(request))
     req_tmp.replace(req_file)
     resp_file = responses_dir / f"{request_id}.json"
-
-    write_session({
-        **record,
-        "state": "needs-permission",
-        "activity": summary,
-        "needsAttention": True,
-        "ts": time.time(),
-    }, target)
 
     try:
         deadline = now + PERM_WAIT_SECONDS
@@ -170,20 +140,6 @@ def intercept_permission(payload: dict, record: dict, target: Path) -> str | Non
         resp_file.unlink(missing_ok=True)
 
 
-def _describe_tool(tool: str | None, tool_input: dict, *, prefix: str) -> str:
-    if not tool:
-        return prefix
-    if tool in ("Edit", "Write", "Read"):
-        path = tool_input.get("file_path") or tool_input.get("path") or ""
-        short = os.path.basename(path) if path else ""
-        return f"{prefix} {tool} {short}".strip()
-    if tool == "Bash":
-        cmd = (tool_input.get("command") or "").strip().splitlines()[0] if tool_input.get("command") else ""
-        cmd = re.sub(r"\s+", " ", cmd)[:60]
-        return f"{prefix} `{cmd}`" if cmd else f"{prefix} bash"
-    return f"{prefix} {tool}"
-
-
 def main() -> int:
     try:
         raw = sys.stdin.read()
@@ -191,14 +147,17 @@ def main() -> int:
     except json.JSONDecodeError:
         return 0
 
-    event = payload.get("hook_event_name") or os.environ.get("AGENTDOCK_EVENT") or "Unknown"
-    session_id = payload.get("session_id") or os.environ.get("CLAUDE_SESSION_ID") or "unknown"
+    event = payload.get("hook_event_name") or "Unknown"
+    session_id = payload.get("session_id") or payload.get("turn_id") or "unknown"
     cwd = payload.get("cwd") or os.getcwd()
 
-    state, activity, needs_attention = map_event(event, payload)
+    mapped = map_event(event, payload)
+    if mapped is None:
+        return 0
+    state, activity, needs_attention = mapped
 
     record = {
-        "tool": "claude-code",
+        "tool": "codex",
         "sessionId": session_id,
         "state": state,
         "project": derive_project(cwd),
@@ -206,18 +165,15 @@ def main() -> int:
         "activity": activity,
         "needsAttention": needs_attention,
         "ts": time.time(),
-        "tty": derive_tty(),
-        "pid": os.getppid(),
         "termProgram": os.environ.get("TERM_PROGRAM"),
-        "warpFocusUrl": os.environ.get("WARP_FOCUS_URL"),
         "termSessionId": os.environ.get("TERM_SESSION_ID") or os.environ.get("ITERM_SESSION_ID"),
     }
 
     target = ROOT / f"{session_id}.json"
     write_session(record, target)
 
-    if event == "PreToolUse":
-        decision = intercept_permission(payload, record, target)
+    if event == "PermissionRequest":
+        decision = intercept_permission(payload, record)
         if decision in ("allow", "deny"):
             tool = payload.get("tool_name")
             tool_input = payload.get("tool_input") or {}
@@ -233,20 +189,16 @@ def main() -> int:
                 "needsAttention": False,
                 "ts": time.time(),
             }, target)
+            behavior = {"behavior": "allow"} if decision == "allow" else {
+                "behavior": "deny",
+                "message": "Denied in AgentDock",
+            }
             print(json.dumps({
                 "hookSpecificOutput": {
-                    "hookEventName": "PreToolUse",
-                    "permissionDecision": decision,
-                    "permissionDecisionReason": "Decided in AgentDock",
+                    "hookEventName": "PermissionRequest",
+                    "decision": behavior,
                 }
             }))
-
-    if event == "SessionEnd":
-        try:
-            time.sleep(0)
-            target.unlink(missing_ok=True)
-        except OSError:
-            pass
 
     return 0
 

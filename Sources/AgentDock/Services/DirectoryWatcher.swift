@@ -1,19 +1,19 @@
 import Foundation
 
-final class ClaudeCodeSource: AgentSource {
-    let tag = "claude-code"
-    var onUpdate: ((String, [AgentSession]) -> Void)?
+final class DirectoryWatcher<T: Decodable> {
+    var onChange: (([(url: URL, value: T)]) -> Void)?
 
     private let directory: URL
-    private let queue = DispatchQueue(label: "agentdock.claude-code.watch")
+    private let queue: DispatchQueue
+    private let pollInterval: DispatchTimeInterval
     private var dirSource: DispatchSourceFileSystemObject?
     private var dirFD: Int32 = -1
     private var pollTimer: DispatchSourceTimer?
-    private let staleAfter: TimeInterval = 600
 
-    init() {
-        directory = AgentDockPaths.sourceDir("sessions")
-        AgentDockPaths.ensureExists(AgentDockPaths.root)
+    init(directory: URL, label: String, pollInterval: DispatchTimeInterval = .milliseconds(500)) {
+        self.directory = directory
+        self.queue = DispatchQueue(label: label)
+        self.pollInterval = pollInterval
         AgentDockPaths.ensureExists(directory)
     }
 
@@ -21,7 +21,7 @@ final class ClaudeCodeSource: AgentSource {
         scan()
         watchDirectory()
         let timer = DispatchSource.makeTimerSource(queue: queue)
-        timer.schedule(deadline: .now() + .milliseconds(500), repeating: .milliseconds(500))
+        timer.schedule(deadline: .now() + pollInterval, repeating: pollInterval)
         timer.setEventHandler { [weak self] in self?.scan() }
         timer.resume()
         pollTimer = timer
@@ -30,7 +30,7 @@ final class ClaudeCodeSource: AgentSource {
     func stop() {
         pollTimer?.cancel(); pollTimer = nil
         dirSource?.cancel(); dirSource = nil
-        if dirFD >= 0 { close(dirFD); dirFD = -1 }
+        dirFD = -1
     }
 
     private func watchDirectory() {
@@ -47,32 +47,22 @@ final class ClaudeCodeSource: AgentSource {
     }
 
     private func scan() {
-        let fm = FileManager.default
-        let now = Date()
-        guard let entries = try? fm.contentsOfDirectory(
+        guard let entries = try? FileManager.default.contentsOfDirectory(
             at: directory,
             includingPropertiesForKeys: [.contentModificationDateKey],
             options: [.skipsHiddenFiles]
         ) else {
-            onUpdate?(tag, [])
+            onChange?([])
             return
         }
 
-        var sessions: [AgentSession] = []
+        var values: [(url: URL, value: T)] = []
         let decoder = JSONDecoder()
         for url in entries where url.pathExtension == "json" {
             guard let data = try? Data(contentsOf: url),
-                  var session = try? decoder.decode(AgentSession.self, from: data) else { continue }
-            let age = now.timeIntervalSince1970 - session.ts
-            if age > staleAfter {
-                try? fm.removeItem(at: url)
-                continue
-            }
-            if session.state.isRunning, age > 120 {
-                session.state = .idle
-            }
-            sessions.append(session)
+                  let value = try? decoder.decode(T.self, from: data) else { continue }
+            values.append((url, value))
         }
-        onUpdate?(tag, sessions)
+        onChange?(values)
     }
 }

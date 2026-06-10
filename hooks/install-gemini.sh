@@ -1,18 +1,17 @@
 #!/usr/bin/env bash
-# Wire the AgentDock hook into ~/.claude/settings.json for all events.
+# Wire the AgentDock hook into ~/.gemini/settings.json for all events.
 # Idempotent: safe to run repeatedly. Backs up settings.json each run.
 set -euo pipefail
 
-HOOK_SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/agentdock-hook.py"
+HOOK_SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/agentdock-gemini-hook.py"
 INSTALL_DIR="$HOME/.agentdock"
-HOOK_DEST="$INSTALL_DIR/agentdock-hook.py"
-SETTINGS="$HOME/.claude/settings.json"
+HOOK_DEST="$INSTALL_DIR/agentdock-gemini-hook.py"
+SETTINGS="$HOME/.gemini/settings.json"
 
-mkdir -p "$INSTALL_DIR" "$INSTALL_DIR/sessions"
+mkdir -p "$INSTALL_DIR" "$INSTALL_DIR/gemini" "$(dirname "$SETTINGS")"
 cp "$HOOK_SRC" "$HOOK_DEST"
 chmod +x "$HOOK_DEST"
 
-mkdir -p "$(dirname "$SETTINGS")"
 if [[ ! -f "$SETTINGS" ]]; then
   echo '{}' > "$SETTINGS"
 fi
@@ -27,8 +26,8 @@ data = json.loads(settings_path.read_text() or "{}")
 hooks = data.setdefault("hooks", {})
 
 EVENTS = [
-    "SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse",
-    "Notification", "Stop", "SessionEnd",
+    "SessionStart", "BeforeAgent", "BeforeTool", "AfterTool",
+    "Notification", "AfterAgent", "SessionEnd",
 ]
 
 for event in EVENTS:
@@ -39,18 +38,17 @@ for event in EVENTS:
     has_ours = False
     for entry in bucket:
         for h in entry.get("hooks", []) if isinstance(entry, dict) else []:
-            if h.get("command", "").endswith("agentdock-hook.py"):
+            if h.get("command", "").endswith("agentdock-gemini-hook.py"):
                 h["command"] = hook
-                if event == "PreToolUse":
-                    h["timeout"] = 60
                 has_ours = True
     if not has_ours:
-        ours = {"type": "command", "command": hook}
-        if event == "PreToolUse":
-            ours["timeout"] = 60
         bucket.append({
-            "matcher": "*",
-            "hooks": [ours],
+            "hooks": [{
+                "name": "agentdock",
+                "type": "command",
+                "command": hook,
+                "timeout": 5000,
+            }],
         })
 
 settings_path.write_text(json.dumps(data, indent=2))
@@ -58,4 +56,4 @@ print(f"Wired AgentDock hook into {settings_path}")
 PY
 
 echo "Installed hook at $HOOK_DEST"
-echo "Sessions will appear in $INSTALL_DIR/sessions/"
+echo "Gemini sessions will appear in $INSTALL_DIR/gemini/"

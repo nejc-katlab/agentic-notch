@@ -7,8 +7,6 @@ struct RootView: View {
     let notchWidth: CGFloat
     let isNotched: Bool
 
-    @State private var breath = false
-
     private var expanded: Bool { panel.expanded }
 
     private var notchPanelShape: NotchPanelShape {
@@ -30,7 +28,7 @@ struct RootView: View {
 
                 VStack(spacing: 0) {
                     Spacer().frame(height: topInset)
-                    ExpandedPanel(store: store, panel: panel, breath: breath)
+                    ExpandedPanel(store: store, panel: panel)
                         .frame(width: panel.bodyWidth, height: max(panel.bodyHeight, 0), alignment: .top)
                         .frame(maxWidth: .infinity)
                         .clipped()
@@ -46,14 +44,12 @@ struct RootView: View {
                 store: store,
                 topInset: topInset,
                 bodyWidth: panel.bodyWidth,
-                notchWidth: notchWidth,
-                breath: breath
+                notchWidth: notchWidth
             )
             .frame(maxWidth: .infinity, alignment: .top)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .coordinateSpace(name: PanelSpace.name)
-        .onAppear { startBreath() }
         .animation(.timingCurve(0.33, 1, 0.68, 1, duration: 0.35), value: panel.expanded)
         .animation(.timingCurve(0.33, 1, 0.68, 1, duration: 0.35), value: panel.bodyHeight)
         .animation(.easeOut(duration: 0.2), value: store.attentionCount)
@@ -69,12 +65,6 @@ struct RootView: View {
             .frame(maxWidth: .infinity, alignment: .center)
     }
 
-    private func startBreath() {
-        breath = false
-        withAnimation(.easeInOut(duration: 1.4).repeatForever(autoreverses: true)) {
-            breath = true
-        }
-    }
 }
 
 struct AnyShape: Shape {
