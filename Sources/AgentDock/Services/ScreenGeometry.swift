@@ -13,8 +13,8 @@ enum NotchLayout {
 
     var collapsedWidth: CGFloat {
         switch self {
-        case .notched(let w, _): return min(max(w + 160, 320), 440)
-        case .fallback: return 360
+        case .notched(let w, _): return min(max(w + 80, 280), 400)
+        case .fallback: return 280
         }
     }
 

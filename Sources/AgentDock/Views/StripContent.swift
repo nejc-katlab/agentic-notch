@@ -16,20 +16,19 @@ struct StripContent: View {
             HStack(spacing: 8) {
                 Spacer(minLength: 0)
                 WorkingChip(count: store.runningCount, breath: breath)
-                if store.attentionCount > 0 {
-                    AttentionChip(count: store.attentionCount)
-                }
             }
-            .padding(.trailing, 10)
+            .padding(.trailing, 0)
             .frame(width: sideWidth, height: topInset, alignment: .trailing)
 
             Color.clear.frame(width: notchWidth, height: topInset)
 
             HStack(spacing: 8) {
-                IdleChip(count: store.idleCount)
+                if store.attentionCount > 0 {
+                    AttentionChip(count: store.attentionCount)
+                }
                 Spacer(minLength: 0)
             }
-            .padding(.leading, 10)
+            .padding(.leading, 0)
             .frame(width: sideWidth, height: topInset, alignment: .leading)
         }
         .frame(width: bodyWidth, height: topInset)
@@ -40,16 +39,32 @@ private struct WorkingChip: View {
     let count: Int
     let breath: Bool
 
+    private let period: Double = 3.2
+
     private var active: Bool { count > 0 }
 
     var body: some View {
         HStack(spacing: 4) {
-            Circle()
-                .fill(Color.green)
-                .frame(width: 6, height: 6)
-                .opacity(active ? (breath ? 1.0 : 0.55) : 0.35)
-                .shadow(color: active ? Color.green.opacity(breath ? 0.7 : 0.15) : .clear,
-                        radius: breath ? 5 : 1)
+            ZStack {
+                if active {
+                    TimelineView(.animation) { context in
+                        let t = context.date.timeIntervalSinceReferenceDate
+                        let phase = (t.truncatingRemainder(dividingBy: period)) / period
+                        let eased = 1 - pow(1 - phase, 3)
+                        Circle()
+                            .fill(Color.green)
+                            .frame(width: 6, height: 6)
+                            .scaleEffect(1 + eased * 4.5)
+                            .opacity(max(0, 1 - eased * 2.2) * 0.6)
+                    }
+                }
+                Circle()
+                    .fill(Color.green)
+                    .frame(width: 6, height: 6)
+                    .opacity(active ? 1.0 : 0.35)
+                    .shadow(color: active ? Color.green.opacity(0.6) : .clear, radius: 3)
+            }
+            .frame(width: 6, height: 6)
             chipCount(count, active: active)
         }
     }
@@ -58,29 +73,29 @@ private struct WorkingChip: View {
 private struct AttentionChip: View {
     let count: Int
 
+    @State private var angle: Double = 0
+
+    private let shakeTimer = Timer.publish(every: 2.6, on: .main, in: .common).autoconnect()
+
     var body: some View {
         HStack(spacing: 4) {
             Image(systemName: "exclamationmark.circle.fill")
                 .font(.system(size: 10, weight: .bold))
                 .foregroundStyle(Color.orange)
                 .shadow(color: Color.orange.opacity(0.45), radius: 3)
+                .rotationEffect(.degrees(angle))
             chipCount(count, active: true, tint: .orange)
         }
         .transition(.scale.combined(with: .opacity))
+        .onAppear(perform: shake)
+        .onReceive(shakeTimer) { _ in shake() }
     }
-}
 
-private struct IdleChip: View {
-    let count: Int
-
-    var body: some View {
-        HStack(spacing: 4) {
-            Circle()
-                .fill(Color.gray)
-                .frame(width: 6, height: 6)
-                .opacity(0.55)
-            chipCount(count, active: count > 0)
-        }
+    private func shake() {
+        var kick = Transaction()
+        kick.disablesAnimations = true
+        withTransaction(kick) { angle = 14 }
+        withAnimation(.spring(response: 0.32, dampingFraction: 0.22)) { angle = 0 }
     }
 }
 

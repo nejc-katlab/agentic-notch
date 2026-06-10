@@ -66,9 +66,10 @@ struct AgentRow: View {
         )
         .contentShape(Rectangle())
         .onTapGesture {
+            if needsAttention { store.dismissAttention(for: session) }
             TerminalLauncher.reveal(session: session)
         }
-        .panelHover(panel.hoverPoint, $rowHovered)
+        .panelHoverCursor(panel.hoverPoint, $rowHovered)
         .help(revealHelp)
     }
 
@@ -135,6 +136,6 @@ private struct IconButton: View {
         }
         .buttonStyle(.plain)
         .help(help)
-        .panelHover(hoverPoint, $hovered)
+        .panelHoverCursor(hoverPoint, $hovered)
     }
 }

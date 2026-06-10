@@ -2,10 +2,26 @@ import AppKit
 import Darwin
 import Foundation
 
+typealias CGSConnectionID = UInt32
+
+@_silgen_name("CGSMainConnectionID")
+func CGSMainConnectionID() -> CGSConnectionID
+
+@_silgen_name("CGSSetConnectionProperty")
+func CGSSetConnectionProperty(
+    _ cid: CGSConnectionID,
+    _ targetCID: CGSConnectionID,
+    _ key: CFString,
+    _ value: CFTypeRef
+) -> CGError
+
 @main
 enum AgentDockApp {
     static func main() {
         AgentDockPaths.ensureExists(AgentDockPaths.root)
+
+        let cid = CGSMainConnectionID()
+        _ = CGSSetConnectionProperty(cid, cid, "SetsCursorInBackground" as CFString, kCFBooleanTrue)
         guard SingleInstanceGuard.acquire() else {
             FileHandle.standardError.write(Data("AgentDock is already running.\n".utf8))
             exit(0)

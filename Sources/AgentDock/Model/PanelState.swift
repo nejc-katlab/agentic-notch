@@ -7,7 +7,7 @@ enum PanelMetrics {
     static let topPadding: CGFloat = 28
     static let bottomPadding: CGFloat = 4
     static let emptyHeight: CGFloat = 96
-    static let settingsHeight: CGFloat = 248
+    static let settingsHeight: CGFloat = 192
 
     static func contentHeight(forSessions count: Int) -> CGFloat {
         guard count > 0 else { return emptyHeight }
@@ -44,7 +44,7 @@ final class PanelState: ObservableObject {
     }
 
     var expandedBodyHeight: CGFloat {
-        let base = settingsOpen ? max(contentHeight, PanelMetrics.settingsHeight) : contentHeight
+        let base = settingsOpen ? PanelMetrics.settingsHeight : contentHeight
         return min(max(base, minExpandedBodyHeight), maxExpandedBodyHeight)
     }
 

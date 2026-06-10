@@ -33,11 +33,11 @@ final class MouseHoverShield: @unchecked Sendable {
     private var source: CFRunLoopSource?
     private var thread: Thread?
     private var runLoop: CFRunLoop?
-    var onSwallow: (() -> Void)?
+    var onSwallow: ((CGPoint) -> Void)?
 
-    func fireSwallow() {
+    func fireSwallow(_ location: CGPoint) {
         guard let onSwallow else { return }
-        DispatchQueue.main.async { onSwallow() }
+        DispatchQueue.main.async { onSwallow(location) }
     }
 
     func updateRegion(_ r: CGRect) {
@@ -112,7 +112,7 @@ private func mouseHoverShieldCallback(
         return Unmanaged.passUnretained(event)
     }
     if shield.contains(event.location) {
-        shield.fireSwallow()
+        shield.fireSwallow(event.location)
         return nil
     }
     return Unmanaged.passUnretained(event)

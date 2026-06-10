@@ -10,8 +10,7 @@ struct ExpandedPanel: View {
             Group {
                 if panel.settingsOpen {
                     SettingsPanel(store: store, panel: panel)
-                        .padding(.top, PanelMetrics.topPadding)
-                        .padding(.trailing, 30)
+                        .padding(.top, 4)
                 } else if store.sessions.isEmpty {
                     emptyState
                 } else {

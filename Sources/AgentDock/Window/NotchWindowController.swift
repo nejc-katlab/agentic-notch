@@ -83,8 +83,8 @@ final class NotchWindowController: NSWindowController {
 
         installGlobalClickMonitor()
         installMouseTracking()
-        hoverShield.onSwallow = { [weak self] in
-            MainActor.assumeIsolated { self?.cursorEnteredShield() }
+        hoverShield.onSwallow = { [weak self] location in
+            MainActor.assumeIsolated { self?.cursorEnteredShield(at: location) }
         }
         hoverShield.install()
 
@@ -173,12 +173,13 @@ final class NotchWindowController: NSWindowController {
         hoverShield.updateRegion(region)
     }
 
-    private func cursorEnteredShield() {
-        guard let window else { return }
-        let screenPoint = NSEvent.mouseLocation
+    private func cursorEnteredShield(at location: CGPoint) {
+        guard let window, let screenHeight = NSScreen.screens.first?.frame.height else { return }
         let frame = window.frame
-        panel.hoverPoint = NSPoint(x: screenPoint.x - frame.minX, y: frame.maxY - screenPoint.y)
+        let point = NSPoint(x: location.x - frame.minX, y: location.y - (screenHeight - frame.maxY))
+        panel.hoverPoint = point
         handleHoverChange(inside: true)
+        HoverCursor.shared.apply()
     }
 
     private func handleHoverChange(inside: Bool) {
@@ -260,6 +261,7 @@ final class NotchWindowController: NSWindowController {
 
     private func updateCursorTracking() {
         panel.hoverPoint = nil
+        HoverCursor.shared.clear()
         handleHoverChange(inside: false)
     }
 }

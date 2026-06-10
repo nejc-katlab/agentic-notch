@@ -18,6 +18,6 @@ struct SettingsButton: View {
                 )
         }
         .buttonStyle(.plain)
-        .panelHover(panel.hoverPoint, $hovered)
+        .panelHoverCursor(panel.hoverPoint, $hovered)
     }
 }

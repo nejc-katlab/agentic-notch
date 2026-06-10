@@ -32,7 +32,6 @@ struct RootView: View {
                     Spacer().frame(height: topInset)
                     ExpandedPanel(store: store, panel: panel, breath: breath)
                         .frame(width: panel.bodyWidth, height: max(panel.bodyHeight, 0), alignment: .top)
-                        .padding(.horizontal, 14)
                         .frame(maxWidth: .infinity)
                         .clipped()
                 }
