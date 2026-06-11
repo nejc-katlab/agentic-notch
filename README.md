@@ -6,6 +6,12 @@ A macOS **notch overlay** that shows your running AI coding agents at a glance. 
 
 Native SwiftUI, zero dependencies, zero telemetry. Everything stays in `~/.agentdock`.
 
+## Privacy
+
+**AgentDock runs entirely on your machine and never sends data anywhere.** There are no servers, no analytics, no telemetry, no network calls of any kind — the app has no networking code at all. Everything works through local files: agent hooks write session JSON into `~/.agentdock/`, and the app reads it. Permission approve/deny, stats, and history all stay on disk under `~/.agentdock/` and are yours alone.
+
+This repository is public, so you don't have to take our word for it — read the source (there's nothing reaching out to the internet) and check the hooks in `hooks/`.
+
 ## Features
 
 - **Live session strip** in the notch — expands on hover to a full panel.
