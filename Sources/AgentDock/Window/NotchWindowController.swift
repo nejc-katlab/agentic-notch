@@ -60,13 +60,32 @@ final class NotchWindowController: NSWindowController {
         hostingView = hosting
         updateHitShape()
 
-        panel.contentHeight = PanelMetrics.contentHeight(forSessions: store.sessions.count)
+        panel.contentHeight = PanelMetrics.contentHeight(
+            forSessions: store.sessions.count,
+            pendingCount: store.pendingPermissions.count
+        )
 
         store.$sessions
             .receive(on: RunLoop.main)
             .sink { [weak self] sessions in
                 guard let self else { return }
-                self.panel.contentHeight = PanelMetrics.contentHeight(forSessions: sessions.count)
+                self.panel.contentHeight = PanelMetrics.contentHeight(
+                    forSessions: sessions.count,
+                    pendingCount: self.store.pendingPermissions.count
+                )
+                self.updateHitShape()
+                self.applyAttentionPolicy()
+            }
+            .store(in: &sinks)
+
+        store.$pendingPermissions
+            .receive(on: RunLoop.main)
+            .sink { [weak self] pending in
+                guard let self else { return }
+                self.panel.contentHeight = PanelMetrics.contentHeight(
+                    forSessions: self.store.sessions.count,
+                    pendingCount: pending.count
+                )
                 self.updateHitShape()
                 self.applyAttentionPolicy()
             }

@@ -20,7 +20,9 @@ struct ExpandedPanel: View {
                         VStack(spacing: PanelMetrics.rowSpacing) {
                             ForEach(store.sessions) { session in
                                 AgentRow(store: store, panel: panel, session: session)
-                                    .frame(height: PanelMetrics.rowHeight)
+                                    .frame(height: store.pendingRequest(for: session) != nil
+                                        ? PanelMetrics.permissionRowHeight
+                                        : PanelMetrics.rowHeight)
                                     .background(
                                         RoundedRectangle(cornerRadius: 6, style: .continuous)
                                             .fill(store.effectivelyNeedsAttention(session)

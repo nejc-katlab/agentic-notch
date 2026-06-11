@@ -2,6 +2,7 @@ import SwiftUI
 
 enum PanelMetrics {
     static let rowHeight: CGFloat = 46
+    static let permissionRowHeight: CGFloat = 122
     static let rowSpacing: CGFloat = 2
     static let topPadding: CGFloat = 28
     static let bottomPadding: CGFloat = 4
@@ -9,9 +10,10 @@ enum PanelMetrics {
     static let settingsHeight: CGFloat = 217
     static let statsHeight: CGFloat = 260
 
-    static func contentHeight(forSessions count: Int) -> CGFloat {
+    static func contentHeight(forSessions count: Int, pendingCount: Int = 0) -> CGFloat {
         guard count > 0 else { return emptyHeight }
-        let rows = CGFloat(count) * rowHeight
+        let pending = min(pendingCount, count)
+        let rows = CGFloat(count - pending) * rowHeight + CGFloat(pending) * permissionRowHeight
         let spacing = CGFloat(count - 1) * rowSpacing
         return topPadding + rows + spacing + bottomPadding
     }
