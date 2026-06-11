@@ -1,7 +1,6 @@
 import Foundation
 
 struct AppState: Codable {
-    var dismissed: Set<String> = []
     var launchAtLogin: Bool = false
     var autoExpandOnAttention: Bool = true
     var sleepPrevention: SleepPreventionMode = .never

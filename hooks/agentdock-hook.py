@@ -11,6 +11,7 @@ import sys
 import json
 import time
 import uuid
+import tempfile
 import subprocess
 from pathlib import Path
 
@@ -62,8 +63,14 @@ def derive_tty() -> str | None:
     return None
 
 
-def map_event(event: str, payload: dict) -> tuple[str, str | None, bool]:
-    """Return (state, activity, needs_attention)."""
+BLOCKING_TOOLS = {
+    "ExitPlanMode": "Claude is waiting for plan approval",
+    "AskUserQuestion": "Claude is asking you a question",
+}
+
+
+def map_event(event: str, payload: dict) -> tuple[str, str | None, bool] | None:
+    """Return (state, activity, needs_attention), or None for informational events."""
     tool = payload.get("tool_name")
     tool_input = payload.get("tool_input") or {}
     if event == "SessionStart":
@@ -71,21 +78,36 @@ def map_event(event: str, payload: dict) -> tuple[str, str | None, bool]:
     if event == "UserPromptSubmit":
         return "working", "Thinking…", False
     if event == "PreToolUse":
+        if tool in BLOCKING_TOOLS:
+            return "needs-input", BLOCKING_TOOLS[tool], True
         return "working", _describe_tool(tool, tool_input, prefix="Running"), False
     if event == "PostToolUse":
         return "working", _describe_tool(tool, tool_input, prefix="Finished"), False
     if event == "Notification":
-        msg = (payload.get("message") or "").lower()
-        if "permission" in msg or "approve" in msg:
-            return "needs-permission", payload.get("message"), True
-        if "waiting" in msg or "idle" in msg or not msg:
-            return "idle", payload.get("message") or "Waiting for your input", False
-        return "needs-input", payload.get("message"), True
+        msg = payload.get("message") or ""
+        low = msg.lower()
+        if any(k in low for k in ("logged in", "authenticated", "login success", "authentication success")):
+            return None
+        if "permission" in low or "approve" in low or "allow" in low:
+            return "needs-permission", msg or "Needs permission", True
+        return "needs-input", msg or "Waiting for your input", True
     if event == "Stop":
         return "idle", "Turn ended", False
     if event == "SessionEnd":
         return "done", "Session ended", False
     return "working", event, False
+
+
+def debug_log(event: str, payload: dict) -> None:
+    marker = Path.home() / ".agentdock" / "debug"
+    if not marker.exists():
+        return
+    try:
+        line = json.dumps({"t": time.time(), "event": event, "payload": payload}) + "\n"
+        with open(marker.parent / "events.log", "a") as fh:
+            fh.write(line)
+    except Exception:
+        pass
 
 
 def app_running() -> bool:
@@ -98,12 +120,21 @@ def app_running() -> bool:
 
 
 def write_session(record: dict, target: Path) -> None:
-    tmp = target.with_suffix(".json.tmp")
-    tmp.write_text(json.dumps(record, indent=2))
-    tmp.replace(target)
+    fd, tmp = tempfile.mkstemp(dir=str(target.parent), prefix=f"{target.stem}.", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w") as fh:
+            json.dump(record, fh, indent=2)
+        os.replace(tmp, target)
+    except Exception:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
 
 
 def intercept_permission(payload: dict, record: dict, target: Path) -> str | None:
+    if payload.get("tool_name") in BLOCKING_TOOLS:
+        return None
     if not (PERM_ROOT / "enabled").exists():
         return None
     if payload.get("permission_mode") not in ("default", "plan"):
@@ -150,6 +181,7 @@ def intercept_permission(payload: dict, record: dict, target: Path) -> str | Non
     }, target)
 
     try:
+        enabled_marker = PERM_ROOT / "enabled"
         deadline = now + PERM_WAIT_SECONDS
         while time.time() < deadline:
             if resp_file.exists():
@@ -158,6 +190,8 @@ def intercept_permission(payload: dict, record: dict, target: Path) -> str | Non
                 except (OSError, json.JSONDecodeError):
                     return None
                 return decision if decision in ("allow", "deny", "ask") else None
+            if not enabled_marker.exists():
+                return None
             time.sleep(0.2)
         return None
     finally:
@@ -195,7 +229,12 @@ def main() -> int:
     session_id = payload.get("session_id") or os.environ.get("CLAUDE_SESSION_ID") or "unknown"
     cwd = payload.get("cwd") or os.getcwd()
 
-    state, activity, needs_attention = map_event(event, payload)
+    debug_log(event, payload)
+
+    mapped = map_event(event, payload)
+    if mapped is None:
+        return 0
+    state, activity, needs_attention = mapped
 
     record = {
         "tool": "claude-code",

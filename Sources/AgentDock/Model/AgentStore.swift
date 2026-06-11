@@ -31,7 +31,6 @@ final class AgentStore: ObservableObject {
 
     func start() {
         let state = StatePersistence.shared.load()
-        dismissedAttention = state.dismissed
         autoExpandOnAttention = state.autoExpandOnAttention
         sleepPreventionMode = state.sleepPrevention
         permissionInterception = state.permissionInterception
@@ -74,7 +73,6 @@ final class AgentStore: ObservableObject {
 
     func dismissAttention(for session: AgentSession) {
         dismissedAttention.insert(session.id)
-        StatePersistence.shared.update { $0.dismissed = dismissedAttention }
         objectWillChange.send()
         recompute()
     }
@@ -87,7 +85,13 @@ final class AgentStore: ObservableObject {
     private func update(tag: String, sessions: [AgentSession]) {
         sessionsBySource[tag] = sessions
         let liveIds = Set(sessions.map { $0.id })
-        dismissedAttention = dismissedAttention.filter { liveIds.contains($0) || !$0.hasPrefix("\(tag):") }
+        let attentionIds = Set(
+            sessions.filter { $0.needsAttention || $0.state.needsAttention }.map { $0.id }
+        )
+        dismissedAttention = dismissedAttention.filter { id in
+            guard id.hasPrefix("\(tag):") else { return true }
+            return liveIds.contains(id) && attentionIds.contains(id)
+        }
         recompute()
     }
 

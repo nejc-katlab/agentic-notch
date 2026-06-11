@@ -6,12 +6,10 @@ final class FileWatchingSource: AgentSource {
 
     private let watcher: DirectoryWatcher<AgentSession>
     private let staleAfter: TimeInterval
-    private let idleAfter: TimeInterval
 
-    init(tag: String, directory: URL, staleAfter: TimeInterval = 600, idleAfter: TimeInterval = 120) {
+    init(tag: String, directory: URL, staleAfter: TimeInterval = 1800) {
         self.tag = tag
         self.staleAfter = staleAfter
-        self.idleAfter = idleAfter
         AgentDockPaths.ensureExists(AgentDockPaths.root)
         watcher = DirectoryWatcher(directory: directory, label: "agentdock.\(tag).watch")
         watcher.onChange = { [weak self] entries in self?.process(entries) }
@@ -25,17 +23,18 @@ final class FileWatchingSource: AgentSource {
         let now = Date().timeIntervalSince1970
         var sessions: [AgentSession] = []
         for (url, session) in entries {
-            var session = session
-            let age = now - session.ts
-            if age > staleAfter {
+            if processIsDead(session.pid) || now - session.ts > staleAfter {
                 try? FileManager.default.removeItem(at: url)
                 continue
-            }
-            if session.state.isRunning, age > idleAfter {
-                session.state = .idle
             }
             sessions.append(session)
         }
         onUpdate?(tag, sessions)
+    }
+
+    private func processIsDead(_ pid: Int?) -> Bool {
+        guard let pid, pid > 1 else { return false }
+        if kill(pid_t(pid), 0) == 0 { return false }
+        return errno == ESRCH
     }
 }
