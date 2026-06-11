@@ -79,7 +79,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             forName: NSApplication.didChangeScreenParametersNotification,
             object: nil, queue: .main
         ) { [weak self] _ in
-            Task { @MainActor in self?.windowController.showOnScreen() }
+            guard let self else { return }
+            Task { @MainActor in self.windowController.showOnScreen() }
         }
     }
 
