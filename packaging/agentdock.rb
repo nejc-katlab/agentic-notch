@@ -1,6 +1,6 @@
 cask "agentdock" do
   version "0.1.0"
-  sha256 "e519f13e3ec13f965e1978eebadf6e850d3f14b568abef6c092a0e8e8947281d"
+  sha256 "72a8666ead194b3c96558c552eff1756da1d16686629bc96843f67d3b8bd5c4b"
 
   url "https://github.com/nejc-katlab/agentic-notch/releases/download/v#{version}/AgentDock-#{version}.zip"
   name "AgentDock"
